@@ -1,0 +1,78 @@
+# property_scraper/models.py
+from django.db import models
+
+class Property(models.Model):
+    name = models.CharField(max_length=255)
+    cost = models.CharField(max_length=50)
+    property_type = models.CharField(max_length=50)
+    area = models.CharField(max_length=50)
+    property_locality = models.CharField(max_length=255)
+    property_city = models.CharField(max_length=255)
+    link = models.URLField()
+
+    def __str__(self):
+        return self.name
+
+# property_scraper/scraper.py
+from selenium import webdriver
+from bs4 import BeautifulSoup
+from property_scraper.models import Property
+import time
+
+def scrape_properties():
+    # Initialize WebDriver (you can use other drivers like Firefox or Edge)
+    driver = webdriver.Chrome(executable_path='/path/to/chromedriver')
+
+    cities_localities = [
+        {"city": "Pune", "localities": ["locality1", "locality2"]},
+        {"city": "Delhi", "localities": ["locality3", "locality4"]},
+        # Add more cities and their respective localities here
+    ]
+
+    for city_data in cities_localities:
+        city = city_data["city"]
+        localities = city_data["localities"]
+
+        for locality in localities:
+            # Define the URL of the website for the city and locality
+            url = f'https://www.99acres.com/search/property/buy/{city.lower()}-{locality.lower()}'
+
+            # Navigate to the website
+            driver.get(url)
+
+            # Add code to interact with the website (e.g., fill forms, click buttons, etc.)
+
+            # Wait for the page to load completely (you can adjust the time as needed)
+            time.sleep(5)
+
+            # Get the page source
+            page_source = driver.page_source
+
+            # Parse the HTML using BeautifulSoup
+            soup = BeautifulSoup(page_source, 'html.parser')
+
+            # Extract data from the soup and save it to your Django model
+            for item in soup.find_all('div', class_='property'):
+                property_data = Property()
+                property_data.name = item.find('h2').text
+                property_data.cost = item.find('div', class_='price').text.strip()
+                property_data.property_type = item.find('div', class_='propType').text.strip()
+                property_data.area = item.find('div', class_='size').text.strip()
+                property_data.property_locality = locality
+                property_data.property_city = city
+                property_data.link = item.find('a', class_='card-link')['href']
+                property_data.save()
+
+    # Close the WebDriver
+    driver.quit()
+
+# property_scraper/cron.py
+from django_cron import CronJobBase, Schedule
+from property_scraper.scraper import scrape_properties
+
+class ScrapePropertiesCron(CronJobBase):
+    schedule = Schedule(run_every_morning=6, run_every_evening=18)
+    code = 'property_scraper.scraper.scrape_properties'
+
+    def do(self):
+        scrape_properties()
